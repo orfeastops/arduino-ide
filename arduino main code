@@ -1,0 +1,275 @@
+#include <Wire.h>
+#include <Adafruit_ADS1X15.h>
+#include <DHT.h>
+#include <WiFi.h>
+#include <time.h>
+
+// ---------- I2C ----------
+#define I2C_SDA 1
+#define I2C_SCL 2
+
+Adafruit_ADS1115 ads;
+
+// ---------- WiFi ----------
+const char* ssid     = "INALAN_2.4G_TjjJtG";
+const char* password = "H7JxdTGa";
+
+// ---------- NTP ----------
+const char* ntpServer          = "pool.ntp.org";
+const long  gmtOffset_sec      = 2 * 3600;
+const int   daylightOffset_sec = 0;
+
+// ---------- DHT ----------
+#define DHTPIN  18
+#define DHTTYPE DHT11
+DHT dht(DHTPIN, DHTTYPE);
+
+// ---------- ΡΕΛΕ PINS ----------
+#define RELAY_WATER_1  4
+#define RELAY_WATER_2  5
+#define RELAY_WATER_3  6
+#define RELAY_LIGHT    7
+#define RELAY_FAN      8
+
+#define RELAY_ON  LOW
+#define RELAY_OFF HIGH
+
+// ---------- ΟΡΙΑ ΠΟΤΙΣΜΑΤΟΣ ----------
+#define WATER_ON   35    // Ανάβει κάτω από 35%
+#define WATER_OFF  45    // Επιτρέπει ξανά άναμμα πάνω από 45%
+
+#define WATER_DURATION 10000  // 10 δευτερόλεπτα πότισμα (ms)
+
+// ---------- ΟΡΙΑ ΕΞΑΕΡΩΣΗΣ ----------
+#define TEMP_ON   50.0
+#define TEMP_OFF  40.0
+#define HUM_ON    70.0
+#define HUM_OFF   60.0
+
+// ---------- CALIBRATION ----------
+const int   S1_DRY    = 13995;
+const int   S1_WET    = 6140;
+const float S2_SCALE  = 0.701;
+const float S2_OFFSET = 456;
+const float S3_SCALE  = 1.00;
+const float S3_OFFSET = 910;
+
+// ---------- PUMP STATE ----------
+// Κάθε αντλία έχει 3 καταστάσεις:
+//   IDLE     = σβηστή, παρακολουθεί
+//   WATERING = ανοιχτή, μετράει 10 δευτερόλεπτα
+//   WAITING  = έσβησε, περιμένει να ξαναπέσει η υγρασία
+
+enum PumpState { IDLE, WATERING, WAITING };
+
+struct Pump {
+  PumpState state;
+  unsigned long startTime;  // Πότε άναψε
+  int relayPin;
+};
+
+Pump pump1 = { IDLE, 0, RELAY_WATER_1 };
+Pump pump2 = { IDLE, 0, RELAY_WATER_2 };
+Pump pump3 = { IDLE, 0, RELAY_WATER_3 };
+
+bool fanOn = false;
+
+// ---------- MEDIAN READ ----------
+int16_t readMedian(int channel) {
+  int16_t v[5];
+  for (int i = 0; i < 5; i++) {
+    v[i] = ads.readADC_SingleEnded(channel);
+    delay(5);
+  }
+  for (int i = 0; i < 4; i++)
+    for (int j = i + 1; j < 5; j++)
+      if (v[j] < v[i]) { int16_t t = v[i]; v[i] = v[j]; v[j] = t; }
+  return v[2];
+}
+
+// ---------- RAW -> MOISTURE % ----------
+int rawToMoisture(float raw) {
+  int m = map((long)raw, S1_DRY, S1_WET, 0, 100);
+  return constrain(m, 0, 100);
+}
+
+// ---------- PUMP CONTROL ----------
+// IDLE:     αν υγρασία < WATER_ON  → άναμμα, μπες σε WATERING
+// WATERING: αν πέρασαν 10 sec      → σβήσιμο, μπες σε WAITING
+// WAITING:  αν υγρασία > WATER_OFF → επιστροφή σε IDLE (έτοιμο για επόμενο κύκλο)
+
+void controlPump(Pump &pump, int moisture, int sensorID) {
+  unsigned long now = millis();
+
+  switch (pump.state) {
+
+    case IDLE:
+      if (moisture < WATER_ON) {
+        pump.state     = WATERING;
+        pump.startTime = now;
+        digitalWrite(pump.relayPin, RELAY_ON);
+        Serial.print(">>> Αντλία "); Serial.print(sensorID);
+        Serial.println(" ON (10 sec)");
+      }
+      break;
+
+    case WATERING:
+      if (now - pump.startTime >= WATER_DURATION) {
+        pump.state = WAITING;
+        digitalWrite(pump.relayPin, RELAY_OFF);
+        Serial.print(">>> Αντλία "); Serial.print(sensorID);
+        Serial.println(" OFF - Αναμονή απορρόφησης...");
+      }
+      break;
+
+    case WAITING:
+      // Μόλις η υγρασία ανέβει πάνω από WATER_OFF, ξαναγίνεται IDLE
+      // Αν το χώμα εξακολουθεί να είναι στεγνό θα ξαναποτίσει στον επόμενο κύκλο
+      if (moisture > WATER_OFF) {
+        pump.state = IDLE;
+        Serial.print(">>> Αισθητήρας "); Serial.print(sensorID);
+        Serial.println(" - Υγρασία ανέβηκε, έτοιμο για επόμενο πότισμα");
+      }
+      break;
+  }
+}
+
+// ---------- ΦΩΤΙΣΜΟΣ GPIO7 ----------
+void controlLight() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return;
+
+  int hour = timeinfo.tm_hour;
+  if (hour >= 2 && hour < 4) {
+    digitalWrite(RELAY_LIGHT, RELAY_OFF);
+  } else {
+    digitalWrite(RELAY_LIGHT, RELAY_ON);
+  }
+}
+
+// ---------- ΕΞΑΕΡΩΣΗ GPIO8 ----------
+void controlFan(float temp, float hum) {
+  if (isnan(temp) || isnan(hum)) {
+    Serial.println("DHT: Σφάλμα ανάγνωσης!");
+    return;
+  }
+
+  if (!fanOn) {
+    if (temp >= TEMP_ON || hum >= HUM_ON) {
+      fanOn = true;
+      digitalWrite(RELAY_FAN, RELAY_ON);
+      Serial.println(">>> Εξαέρωση ON");
+    }
+  } else {
+    if (temp < TEMP_OFF && hum < HUM_OFF) {
+      fanOn = false;
+      digitalWrite(RELAY_FAN, RELAY_OFF);
+      Serial.println(">>> Εξαέρωση OFF");
+    }
+  }
+}
+
+// ---------- SETUP ----------
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+
+  Wire.begin(I2C_SDA, I2C_SCL);
+  if (!ads.begin(0x48, &Wire)) {
+    Serial.println("ADS1115 not found!");
+    while (1);
+  }
+  ads.setGain(GAIN_TWOTHIRDS);
+
+  dht.begin();
+
+  pinMode(RELAY_WATER_1, OUTPUT);
+  pinMode(RELAY_WATER_2, OUTPUT);
+  pinMode(RELAY_WATER_3, OUTPUT);
+  pinMode(RELAY_LIGHT,   OUTPUT);
+  pinMode(RELAY_FAN,     OUTPUT);
+
+  digitalWrite(RELAY_WATER_1, RELAY_OFF);
+  digitalWrite(RELAY_WATER_2, RELAY_OFF);
+  digitalWrite(RELAY_WATER_3, RELAY_OFF);
+  digitalWrite(RELAY_LIGHT,   RELAY_OFF);
+  digitalWrite(RELAY_FAN,     RELAY_OFF);
+
+  // WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Σύνδεση WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi OK - IP: " + WiFi.localIP().toString());
+
+  // NTP
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  struct tm timeinfo;
+  int attempts = 0;
+  while (!getLocalTime(&timeinfo) && attempts < 10) {
+    Serial.println("Αναμονή ώρας NTP...");
+    delay(1000);
+    attempts++;
+  }
+  Serial.println(attempts < 10 ? "Ώρα OK" : "NTP απέτυχε");
+}
+
+// ---------- LOOP ----------
+void loop() {
+
+  // Διαβάζουμε αισθητήρες εδάφους
+  int16_t raw0 = readMedian(0);
+  int16_t raw1 = readMedian(1);
+  int16_t raw2 = readMedian(2);
+
+  float raw1_norm = raw1 * S2_SCALE + S2_OFFSET;
+  float raw2_norm = raw2 * S3_SCALE + S3_OFFSET;
+
+  int m1 = rawToMoisture(raw0);
+  int m2 = rawToMoisture(raw1_norm);
+  int m3 = rawToMoisture(raw2_norm);
+
+  // DHT22
+  float humidity    = dht.readHumidity();
+  float temperature = dht.readTemperature();
+
+  // Serial output
+  Serial.println("=========================================");
+
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    char timeStr[20];
+    strftime(timeStr, sizeof(timeStr), "%H:%M:%S", &timeinfo);
+    Serial.print("Ώρα: "); Serial.println(timeStr);
+  }
+
+  // Pump states για εμφάνιση
+  const char* stateStr[] = { "IDLE", "ΠΟΤΙΖΕΙ", "ΑΝΑΜΟΝΗ" };
+
+  Serial.print("Αισθητήρας 1: "); Serial.print(m1);
+  Serial.print("%  RAW: ");       Serial.print(raw0);
+  Serial.print("  Αντλία: ");     Serial.println(stateStr[pump1.state]);
+
+  Serial.print("Αισθητήρας 2: "); Serial.print(m2);
+  Serial.print("%  RAW: ");       Serial.print(raw1);
+  Serial.print("  Αντλία: ");     Serial.println(stateStr[pump2.state]);
+
+  Serial.print("Αισθητήρας 3: "); Serial.print(m3);
+  Serial.print("%  RAW: ");       Serial.print(raw2);
+  Serial.print("  Αντλία: ");     Serial.println(stateStr[pump3.state]);
+
+  Serial.print("Θερμοκρασία: ");  Serial.print(temperature); Serial.println(" °C");
+  Serial.print("Υγρασία αέρα: "); Serial.print(humidity);    Serial.println(" %");
+  Serial.print("Εξαέρωση: ");     Serial.println(fanOn ? "ON" : "OFF");
+
+  // Έλεγχοι
+  controlFan(temperature, humidity);
+  controlLight();
+  controlPump(pump1, m1, 1);
+  controlPump(pump2, m2, 2);
+  controlPump(pump3, m3, 3);
+
+  delay(3000);
+}
