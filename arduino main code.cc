@@ -81,6 +81,10 @@ Pump pump2 = { IDLE, 0, RELAY_WATER_2 };
 Pump pump3 = { IDLE, 0, RELAY_WATER_3 };
 bool fanOn = false;
 
+bool lastPump1Manual = false;
+bool lastPump2Manual = false;
+bool lastPump3Manual = false;
+
 // ---------- TIMERS ----------
 unsigned long lastDataSend      = 0;
 unsigned long lastSettingsFetch = 0;
@@ -238,10 +242,16 @@ void controlFan(float temp, float hum) {
 // ---------- PUMP CONTROL ----------
 // Αν manual ON → ποτίζει συνεχώς μέχρι να κλείσεις
 // Αν AUTO → κανονική λειτουργία βάσει υγρασίας
-void controlPump(Pump &pump, int moisture, int sensorID, bool manualOn) {
+void controlPump(Pump &pump, int moisture, int sensorID, bool manualOn, bool &lastManual) {
+  if (!manualOn && lastManual) {
+    // Just turned off manual - reset state machine
+    pump.state = IDLE;
+    pump.startTime = 0;
+    digitalWrite(pump.relayPin, RELAY_OFF);
+  }
+  lastManual = manualOn;
+
   if (manualOn) {
-    // Manual override - ποτίζει συνεχώς
-    pump.state = WATERING;
     digitalWrite(pump.relayPin, RELAY_ON);
     return;
   }
@@ -254,6 +264,8 @@ void controlPump(Pump &pump, int moisture, int sensorID, bool manualOn) {
         pump.startTime = now;
         digitalWrite(pump.relayPin, RELAY_ON);
         Serial.print(">>> Αντλία "); Serial.print(sensorID); Serial.println(" ON (auto)");
+      } else {
+        digitalWrite(pump.relayPin, RELAY_OFF);
       }
       break;
     case WATERING:
@@ -264,6 +276,7 @@ void controlPump(Pump &pump, int moisture, int sensorID, bool manualOn) {
       }
       break;
     case WAITING:
+      digitalWrite(pump.relayPin, RELAY_OFF);
       if (moisture > WATER_OFF) {
         pump.state = IDLE;
         Serial.print(">>> Αισθητήρας "); Serial.print(sensorID); Serial.println(" - Έτοιμο");
@@ -365,9 +378,9 @@ void loop() {
   // Έλεγχοι
   controlLight();
   controlFan(temperature, humidity);
-  controlPump(pump1, m1, 1, PUMP1_ON);
-  controlPump(pump2, m2, 2, PUMP2_ON);
-  controlPump(pump3, m3, 3, PUMP3_ON);
+  controlPump(pump1, m1, 1, PUMP1_ON, lastPump1Manual);
+  controlPump(pump2, m2, 2, PUMP2_ON, lastPump2Manual);
+  controlPump(pump3, m3, 3, PUMP3_ON, lastPump3Manual);
 
   unsigned long now = millis();
 
