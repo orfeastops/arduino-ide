@@ -1,0 +1,192 @@
+import express from "express";
+import { createServer as createViteServer } from "vite";
+import Database from "better-sqlite3";
+import path from "path";
+import { Server } from "socket.io";
+import { createServer } from "http";
+
+const db = new Database("grow_system.db");
+
+// Initialize database with individual settings for each pot
+db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS sensor_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    soil1 REAL,
+    soil2 REAL,
+    soil3 REAL,
+    temp REAL,
+    humidity REAL,
+    pump1_active INTEGER,
+    pump2_active INTEGER,
+    pump3_active INTEGER,
+    light_active INTEGER,
+    vent_active INTEGER
+  );
+`);
+
+// Default settings - Individualized for each pot
+const defaultSettings = {
+  soil_threshold_low_1: "35",
+  soil_threshold_low_2: "35",
+  soil_threshold_low_3: "35",
+  soil_threshold_high_1: "45",
+  soil_threshold_high_2: "45",
+  soil_threshold_high_3: "45",
+  watering_duration_1: "10",
+  watering_duration_2: "10",
+  watering_duration_3: "10",
+  light_off_start: "02:00",
+  light_off_end: "04:00",
+  temp_threshold_high: "50",
+  temp_threshold_low: "40",
+  hum_threshold_high: "70",
+  hum_threshold_low: "60",
+  kill_pump1: "0",
+  kill_pump2: "0",
+  kill_pump3: "0",
+  kill_light: "0",
+  kill_vent: "0"
+};
+
+// Seed settings if empty
+const stmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+for (const [key, value] of Object.entries(defaultSettings)) {
+  stmt.run(key, value);
+}
+
+async function startServer() {
+  const app = express();
+  const httpServer = createServer(app);
+  const io = new Server(httpServer);
+  const PORT = 3000;
+
+  app.use(express.json());
+
+  // WebSocket connection
+  io.on("connection", (socket) => {
+    console.log("Client connected");
+    
+    // Send initial state
+    const latestData = db.prepare("SELECT * FROM sensor_data ORDER BY timestamp DESC LIMIT 1").get();
+    const settingsRows = db.prepare("SELECT key, value FROM settings").all();
+    const settings = settingsRows.reduce((acc: any, row: any) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {});
+
+    socket.emit("init", { sensors: latestData || {}, settings });
+
+    socket.on("disconnect", () => {
+      console.log("Client disconnected");
+    });
+  });
+
+  // API for Arduino to post sensor data and get commands
+  app.post("/api/arduino/sync", (req, res) => {
+    const { 
+      soil1, soil2, soil3, temp, humidity, 
+      pump1, pump2, pump3, light, vent,
+      secret 
+    } = req.body;
+
+    // Log sensor data
+    const result = db.prepare(`
+      INSERT INTO sensor_data (soil1, soil2, soil3, temp, humidity, pump1_active, pump2_active, pump3_active, light_active, vent_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(soil1, soil2, soil3, temp, humidity, pump1 ? 1 : 0, pump2 ? 1 : 0, pump3 ? 1 : 0, light ? 1 : 0, vent ? 1 : 0);
+
+    const newData = {
+      id: result.lastInsertRowid,
+      timestamp: new Date().toISOString(),
+      soil1, soil2, soil3, temp, humidity,
+      pump1_active: pump1 ? 1 : 0,
+      pump2_active: pump2 ? 1 : 0,
+      pump3_active: pump3 ? 1 : 0,
+      light_active: light ? 1 : 0,
+      vent_active: vent ? 1 : 0
+    };
+
+    // Broadcast update to all connected clients
+    io.emit("sensor_update", newData);
+
+    // Get current settings to return to Arduino
+    const settingsRows = db.prepare("SELECT key, value FROM settings").all();
+    const settings = settingsRows.reduce((acc: any, row: any) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {});
+
+    res.json(settings);
+  });
+
+  // API for Frontend to get latest state (fallback for WS)
+  app.get("/api/state", (req, res) => {
+    const latestData = db.prepare("SELECT * FROM sensor_data ORDER BY timestamp DESC LIMIT 1").get();
+    const settingsRows = db.prepare("SELECT key, value FROM settings").all();
+    const settings = settingsRows.reduce((acc: any, row: any) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {});
+
+    res.json({
+      sensors: latestData || {},
+      settings: settings
+    });
+  });
+
+  // API for Frontend to update settings
+  app.post("/api/settings", (req, res) => {
+    const updates = req.body;
+    const updateStmt = db.prepare("UPDATE settings SET value = ? WHERE key = ?");
+    
+    const transaction = db.transaction((data) => {
+      for (const [key, value] of Object.entries(data)) {
+        updateStmt.run(String(value), key);
+      }
+    });
+
+    transaction(updates);
+
+    // Broadcast settings update
+    const settingsRows = db.prepare("SELECT key, value FROM settings").all();
+    const settings = settingsRows.reduce((acc: any, row: any) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {});
+    io.emit("settings_update", settings);
+
+    res.json({ status: "success" });
+  });
+
+  // API for historical data
+  app.get("/api/history", (req, res) => {
+    const history = db.prepare("SELECT * FROM sensor_data ORDER BY id DESC LIMIT 100").all();
+    res.json(history);
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    app.use(express.static(path.join(__dirname, "dist")));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(__dirname, "dist", "index.html"));
+    });
+  }
+
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();
