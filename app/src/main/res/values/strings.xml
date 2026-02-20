@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">GreenhouseApp</string>
+    <string name="status_operational">STATUS: OPERATIONAL</string>
+    <string name="status_disabled">STATUS: DISABLED</string>
+    <string name="status_overridden">STATUS: OVERRIDDEN</string>
+    <string name="error_updating_control">Error updating %s</string>
+    <string name="error_updating_control_details">Error updating %1$s: %2$s</string>
+    <string name="updated_message">Updated!</string>
+    <string name="could_not_load_state">Could not load state: %s</string>
+</resources>

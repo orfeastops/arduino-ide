@@ -1,0 +1,20 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+  <!-- Base application theme. -->
+  <style name="Base.Theme.GreenhouseApp" parent="Theme.Material3.DayNight.NoActionBar">
+    <!-- Customize your light theme here. -->
+    <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+  </style>
+
+  <style name="Theme.GreenhouseApp" parent="Base.Theme.GreenhouseApp" />
+
+  <style name="GreenSwitch" parent="Theme.AppCompat.Light">
+    <!-- active thumb & track color (30% transparency) -->
+    <item name="colorControlActivated">#4CAF50</item>
+
+    <!-- inactive thumb color -->
+    <item name="colorSwitchThumbNormal">#BDBDBD</item>
+
+    <!-- inactive track color (30% transparency) -->
+    <item name="android:colorForeground">#42000000</item>
+  </style>
+</resources>

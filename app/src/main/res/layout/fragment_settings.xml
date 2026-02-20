@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0D0D0D"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SETTINGS"
+            android:textColor="#FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp"/>
+
+        <!-- Water On Threshold -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textColorHint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_water_on"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Water On Threshold (%)"
+                android:inputType="number"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#1A1A1A"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Water Off Threshold -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textColorHint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_water_off"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Water Off Threshold (%)"
+                android:inputType="number"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#1A1A1A"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Water Duration -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textColorHint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_water_duration"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Watering Duration (seconds)"
+                android:inputType="number"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#1A1A1A"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Temperature On -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textColorHint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_temp_on"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Fan On Temperature (°C)"
+                android:inputType="numberDecimal"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#1A1A1A"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Temperature Off -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textColorHint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_temp_off"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Fan Off Temperature (°C)"
+                android:inputType="numberDecimal"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#1A1A1A"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Humidity On -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textColorHint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_hum_on"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Fan On Humidity (%)"
+                android:inputType="number"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#1A1A1A"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Humidity Off -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textColorHint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_hum_off"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Fan Off Humidity (%)"
+                android:inputType="number"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#1A1A1A"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Light Off Start Time -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:textColorHint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_light_off_start"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Light Off Start Time (HH:mm)"
+                android:inputType="time"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#1A1A1A"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Light Off End Time -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:textColorHint="#888888">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/et_light_off_end"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Light Off End Time (HH:mm)"
+                android:inputType="time"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#1A1A1A"/>
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <Button
+            android:id="@+id/btn_save_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="SAVE SETTINGS"
+            android:backgroundTint="#4CAF50"
+            android:textColor="#FFFFFF"
+            android:paddingVertical="16dp"/>
+
+    </LinearLayout>
+</ScrollView>
